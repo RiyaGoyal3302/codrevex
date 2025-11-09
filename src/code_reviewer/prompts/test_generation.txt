@@ -1,0 +1,29 @@
+You are an expert test engineer. Generate a comprehensive test for the following Python function.
+
+## Function to Test
+
+{function_info}
+
+## Test Requirements
+
+- Framework: {framework}
+- Test all edge cases
+- Test error conditions
+- Use descriptive assertions
+{docstring_requirement}
+
+## File Context
+
+{imports}
+
+{examples}
+
+## Task
+
+Generate a complete, working test function following these patterns.
+Output ONLY the test function code, no explanations.
+
+Format your response as:
+```python
+# Test code here
+```

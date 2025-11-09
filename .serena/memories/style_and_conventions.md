@@ -1,0 +1,5 @@
+- Language: Python 3.12 with optional/gradual typing; dataclasses and type annotations are used throughout CLI, config, and analyzer modules.
+- Formatting & linting: Black + Ruff configured with 100 char line length and target version py312. Prefer docstrings on public functions/classes and Click command docblocks describe usage examples.
+- Error handling: CLI surfaces user-facing errors via `click.secho` + exit codes; internal helpers raise structured exceptions (ValueError, GitPython errors) after validation.
+- Configuration: Prefer centralized access via `Config.from_env()` and call `validate()` early; environment variables prefixed with `CODE_REVIEWER_` (model, toggles, tokens, docstrings) and `ANTHROPIC_API_KEY` is mandatory.
+- Output style: Review responses emphasize severity labels, file:line references, and actionable suggestions; stick to the existing template in `CodeReviewer.format_review_output` when extending features.

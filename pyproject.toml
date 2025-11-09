@@ -1,0 +1,57 @@
+[project]
+name = "code-reviewer-bot"
+version = "0.1.0"
+description = "Smart code review tool using Claude Sonnet 4.5 with git diff analysis and test generation"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [
+    { name = "Code Reviewer Bot" }
+]
+keywords = ["code-review", "cli", "testing", "claude", "ast", "git"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Testing",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "anthropic>=0.72.0",
+    "gitpython>=3.1.45",
+    "click>=8.3.0",
+    "radon>=6.0.1",
+]
+
+[project.scripts]
+code-reviewer = "code_reviewer.cli:cli"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "mypy>=1.0.0",
+    "ruff>=0.1.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/code_reviewer"]
+
+[tool.black]
+line-length = 100
+target-version = ['py312']
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false

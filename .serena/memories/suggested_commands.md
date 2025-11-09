@@ -1,0 +1,8 @@
+- `uv sync` – install project dependencies from `pyproject.toml` + `uv.lock`.
+- `uv pip install -e .` – editable install that exposes the `code-reviewer` CLI locally.
+- `uv run code-reviewer init` – bootstrap a target repo (creates `tests/`, updates `.gitignore`).
+- `uv run code-reviewer review [--staged|--commit SHA|--output FILE|--json]` – run the harsh review flow; exit codes escalate with severity.
+- `uv run code-reviewer generate-tests <path> [--function NAME --dry-run --test-dir DIR]` – synthesize tests for a module/function.
+- `uv run code-reviewer status` – inspect configuration, repo state, and MCP toggles.
+- `uv run pytest` – execute automated tests (framework assumed pytest by default env).
+- `uv run ruff check .` / `uv run black .` / `uv run mypy src` – lint, format, and type-check before submitting changes.
