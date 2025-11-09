@@ -1,8 +1,9 @@
 - `uv sync` – install project dependencies from `pyproject.toml` + `uv.lock`.
 - `uv pip install -e .` – editable install that exposes the `code-reviewer` CLI locally.
-- `uv run code-reviewer init` – bootstrap a target repo (creates `tests/`, updates `.gitignore`).
-- `uv run code-reviewer review [--staged|--commit SHA|--output FILE|--json]` – run the harsh review flow; exit codes escalate with severity.
-- `uv run code-reviewer generate-tests <path> [--function NAME --dry-run --test-dir DIR]` – synthesize tests for a module/function.
-- `uv run code-reviewer status` – inspect configuration, repo state, and MCP toggles.
-- `uv run pytest` – execute automated tests (framework assumed pytest by default env).
-- `uv run ruff check .` / `uv run black .` / `uv run mypy src` – lint, format, and type-check before submitting changes.
+- `code-reviewer init` – bootstrap a target repo (creates `tests/`, updates `.gitignore`).
+- `code-reviewer review [--staged|--commit SHA|--output FILE|--json]` – run the harsh review flow; exit codes escalate with severity (0=clean, 1=high issues, 2=critical issues).
+- `code-reviewer generate-tests <path> [--function NAME --dry-run --test-dir DIR]` – synthesize tests for a module/function using AST analysis and existing test patterns.
+- `code-reviewer status` – inspect configuration, repo state, and current environment settings.
+- `git add . && git commit -m "message" && git push` – standard git workflow for committing and pushing changes.
+- `uv run ruff check .` / `uv run black .` – lint and format code before submitting changes.
+- Note: pytest tests are not yet implemented in this repository but can be run in target projects where tests are generated.

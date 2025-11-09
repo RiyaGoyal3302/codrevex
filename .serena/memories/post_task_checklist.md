@@ -1,5 +1,7 @@
-1. Ensure `ANTHROPIC_API_KEY` (and optional MCP toggles) are set if your change touches reviewer behavior.
-2. Reformat/lint/type-check: `uv run black .`, `uv run ruff check .`, `uv run mypy src`.
-3. Run tests via `uv run pytest`; add/update tests whenever new logic is introduced.
-4. If the CLI behavior changed, smoke-test the affected command, e.g., `uv run code-reviewer review --staged` or relevant subcommand, and confirm exit codes/output formatting.
-5. Update README or config defaults when introducing new env vars or CLI options before opening a PR.
+1. Ensure `ANTHROPIC_API_KEY` is set if your change touches reviewer or test generation behavior.
+2. Reformat and lint code: `uv run black .` and `uv run ruff check .` before committing.
+3. If the CLI behavior changed, smoke-test the affected command (e.g., `code-reviewer review --staged`, `code-reviewer generate-tests <file>`) and confirm exit codes and output formatting work correctly.
+4. Update README or config defaults when introducing new environment variables or CLI options.
+5. If prompts are modified, test the review/test generation output to ensure quality hasn't degraded.
+6. Commit changes with clear, descriptive commit messages following the project's style (bullet points for multiple changes).
+7. Push to GitHub repository: https://github.com/RiyaGoyal3302/codrevex
