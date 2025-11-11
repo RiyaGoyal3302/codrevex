@@ -41,6 +41,7 @@ TEST_GENERATION_TOOL: ToolParam = {
     },
 }
 
+
 @dataclass
 class GeneratedTest:
     """Represents a generated test."""
