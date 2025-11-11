@@ -87,7 +87,9 @@ class GitAnalyzer:
             List of DiffInfo objects for unstaged changes
         """
         diff_index = self.repo.index.diff(None)
-        return self._parse_diff_index(diff_index)  # type: ignore[arg-type]
+        diffs = self._parse_diff_index(diff_index)  # type: ignore[arg-type]
+        diffs.extend(self._get_untracked_diffs())
+        return diffs
 
     def get_staged_diff(self) -> List[DiffInfo]:
         """
@@ -238,6 +240,37 @@ class GitAnalyzer:
                     file_path=str(path),
                     change_type="A",
                     additions=diff_content.count("\n+") if diff_content else 0,
+                    deletions=0,
+                    diff_content=diff_content,
+                )
+            )
+
+        return diffs
+
+    def _get_untracked_diffs(self) -> List[DiffInfo]:
+        """Generate DiffInfo entries for untracked files."""
+        diffs: List[DiffInfo] = []
+
+        for relative_path in self.repo.untracked_files:
+            file_path = self.repo_path / relative_path
+            diff_content = ""
+            additions = 0
+
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                lines = content.splitlines()
+                additions = len(lines)
+                diff_content = "\n".join(f"+{line}" for line in lines)
+            except (OSError, UnicodeDecodeError):
+                diff_content = ""
+                additions = 0
+
+            diffs.append(
+                DiffInfo(
+                    file_path=str(relative_path),
+                    change_type="A",
+                    additions=additions,
                     deletions=0,
                     diff_content=diff_content,
                 )

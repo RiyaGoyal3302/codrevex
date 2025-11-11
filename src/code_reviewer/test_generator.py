@@ -1,17 +1,45 @@
 """Test generation module using AST analysis and Claude."""
 
+import json
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional, TypedDict, cast
 from dataclasses import dataclass
 
 from anthropic import Anthropic
-from anthropic.types import TextBlock
+from anthropic.types import Message, TextBlock, ToolParam, ToolUseBlock
 import anthropic
 
 from .config import Config
 from .ast_analyzer import ASTAnalyzer, FunctionInfo, FileAnalysis
 from .prompts import format_test_prompt
 
+
+class TestToolPayload(TypedDict, total=False):
+    test_name: str
+    tested_function: str
+    framework: str
+    test_code: str
+    test_file_path: str
+
+
+TEST_GENERATION_TOOL: ToolParam = {
+    "name": "emit_test",
+    "description": (
+        "Return a fully-formed unit test for the requested function. "
+        "Always include the exact code that should be written to disk."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "test_name": {"type": "string"},
+            "tested_function": {"type": "string"},
+            "framework": {"type": "string"},
+            "test_code": {"type": "string"},
+            "test_file_path": {"type": "string"},
+        },
+        "required": ["test_name", "tested_function", "framework", "test_code"],
+    },
+}
 
 @dataclass
 class GeneratedTest:
@@ -266,34 +294,42 @@ class TestGenerator:
 
         # Call Claude
         try:
-            response = self.client.messages.create(
+            response: Message = self.client.messages.create(
                 model=self.config.model,
                 max_tokens=4000,
                 temperature=0.3,  # Lower temperature for more consistent output
+                tools=[TEST_GENERATION_TOOL],
+                tool_choice={"type": "tool", "name": "emit_test"},
                 messages=[{"role": "user", "content": prompt}],
             )
 
-            # Extract test code from response - safely handle content types
-            response_text = ""
-            for block in response.content:
-                if isinstance(block, TextBlock):
-                    response_text = block.text
-                    break
+            tool_payload: Optional[TestToolPayload] = self._extract_test_tool_payload(response)
 
-            if not response_text:
-                response_text = str(response.content[0])
+            if tool_payload:
+                test_name = tool_payload.get("test_name") or f"test_{func.name}"
+                framework = tool_payload.get("framework") or str(test_patterns["framework"])
+                test_code = tool_payload.get("test_code", "").strip()
+                tested_function = tool_payload.get("tested_function", func.name)
+                test_file_path = tool_payload.get("test_file_path") or self._get_test_file_path(
+                    file_path, framework
+                )
+            else:
+                response_text = self._collect_text_blocks(response)
+                test_code = self._extract_test_code(response_text)
+                framework = str(test_patterns["framework"])
+                test_name = f"test_{func.name}"
+                tested_function = func.name
+                test_file_path = self._get_test_file_path(file_path, framework)
 
-            test_code = self._extract_test_code(response_text)
-
-            # Determine test file path
-            test_file_path = self._get_test_file_path(file_path, str(test_patterns["framework"]))
+            if not test_code.strip():
+                raise RuntimeError("Claude did not return any test code")
 
             return GeneratedTest(
-                test_name=f"test_{func.name}",
+                test_name=test_name,
                 test_code=test_code,
-                tested_function=func.name,
+                tested_function=tested_function,
                 test_file_path=test_file_path,
-                framework=str(test_patterns["framework"]),
+                framework=framework,
             )
 
         except anthropic.APIError as e:
@@ -313,6 +349,29 @@ class TestGenerator:
         else:
             # Return the whole response if no code blocks found
             return response_text.strip()
+
+    def _collect_text_blocks(self, response: Message) -> str:
+        """Concatenate all text segments from a Claude response."""
+        texts = [block.text for block in response.content if isinstance(block, TextBlock)]
+        if texts:
+            return "\n".join(texts)
+        return str(response.content[0]) if response.content else ""
+
+    def _extract_test_tool_payload(self, response: Message) -> Optional[TestToolPayload]:
+        """Return the emit_test payload if Claude used the structured tool."""
+        for block in response.content:
+            block_type = getattr(block, "type", None)
+            if isinstance(block, ToolUseBlock) or block_type == "tool_use":
+                if getattr(block, "name", None) == "emit_test":
+                    raw_input = getattr(block, "input", None)
+                    if isinstance(raw_input, dict):
+                        return cast(TestToolPayload, raw_input)
+                    if isinstance(raw_input, str):
+                        try:
+                            return cast(TestToolPayload, json.loads(raw_input))
+                        except json.JSONDecodeError:
+                            return None
+        return None
 
     def _get_test_file_path(self, source_file: str, framework: str) -> str:
         """Determine the test file path for a source file."""

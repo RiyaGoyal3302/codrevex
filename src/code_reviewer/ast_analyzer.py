@@ -258,11 +258,15 @@ class ASTAnalyzer:
         """Extract global variable assignments."""
         variables: List[str] = []
 
-        for node in ast.walk(tree):
+        for node in getattr(tree, "body", []):
             if isinstance(node, ast.Assign):
-                # Only top-level assignments
-                if isinstance(node.targets[0], ast.Name):
-                    variables.append(node.targets[0].id)
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        variables.append(target.id)
+            elif isinstance(node, ast.AnnAssign):
+                target = node.target
+                if isinstance(target, ast.Name):
+                    variables.append(target.id)
 
         return variables
 

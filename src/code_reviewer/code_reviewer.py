@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, TypedDict, cast
 
 from anthropic import Anthropic
-from anthropic.types import TextBlock
+from anthropic.types import Message, TextBlock, ToolParam, ToolUseBlock
 import anthropic
 
 from .config import Config
@@ -151,34 +151,43 @@ class CodeReviewer:
 
         # Call Claude for review
         try:
-            response = self.client.messages.create(
+            response: Message = self.client.messages.create(
                 model=self.config.model,
                 max_tokens=self.config.max_tokens,
                 temperature=self.config.temperature,
+                tools=[REVIEW_TOOL],
+                tool_choice={"type": "tool", "name": "submit_review"},
                 messages=[{"role": "user", "content": review_prompt}],
             )
 
-            # Parse response - safely extract text content
-            review_text = ""
-            for block in response.content:
-                if isinstance(block, TextBlock):
-                    review_text = block.text
-                    break
+            tool_payload: Optional[ReviewToolPayload] = self._extract_review_tool_payload(response)
 
-            if not review_text:
-                review_text = str(response.content[0])
+            if tool_payload:
+                result = self._build_review_result(tool_payload)
+            else:
+                review_text = self._collect_text_blocks(response)
+                result = self._parse_review_response(review_text, diffs)
 
-            result = self._parse_review_response(review_text, diffs)
             result.diff_analyzed = diff_context
 
             return result
 
         except anthropic.APIConnectionError as e:
-            return ReviewResult(overall_score=0, summary=f"Network error: {str(e.__cause__)}", issues=[])
-        except anthropic.RateLimitError as e:
-            return ReviewResult(overall_score=0, summary="Rate limit exceeded. Please wait and try again.", issues=[])
+            return ReviewResult(
+                overall_score=0, summary=f"Network error: {str(e.__cause__)}", issues=[]
+            )
+        except anthropic.RateLimitError:
+            return ReviewResult(
+                overall_score=0,
+                summary="Rate limit exceeded. Please wait and try again.",
+                issues=[],
+            )
         except anthropic.APIStatusError as e:
-            return ReviewResult(overall_score=0, summary=f"API error (status {e.status_code}): {str(e.response)}", issues=[])
+            return ReviewResult(
+                overall_score=0,
+                summary=f"API error (status {e.status_code}): {str(e.response)}",
+                issues=[],
+            )
         except anthropic.APIError as e:
             return ReviewResult(overall_score=0, summary=f"API Error: {str(e)}", issues=[])
 
@@ -333,6 +342,68 @@ class CodeReviewer:
                 recommendations=["Unable to parse structured review. See summary for details."],
             )
 
+    def _collect_text_blocks(self, response: Message) -> str:
+        """Concatenate all text blocks from a Claude response."""
+        texts = [block.text for block in response.content if isinstance(block, TextBlock)]
+        if texts:
+            return "\n".join(texts)
+
+        # Fallback to the first block's string representation for debugging
+        return str(response.content[0]) if response.content else ""
+
+    def _extract_review_tool_payload(self, response: Message) -> Optional[ReviewToolPayload]:
+        """Return the JSON payload from the submit_review tool call if present."""
+        for block in response.content:
+            block_type = getattr(block, "type", None)
+            if isinstance(block, ToolUseBlock) or block_type == "tool_use":
+                name = getattr(block, "name", None)
+                if name == "submit_review":
+                    raw_input = getattr(block, "input", None)
+                    if isinstance(raw_input, dict):
+                        return cast(ReviewToolPayload, raw_input)
+                    if isinstance(raw_input, str):
+                        try:
+                            return cast(ReviewToolPayload, json.loads(raw_input))
+                        except json.JSONDecodeError:
+                            return None
+        return None
+
+    def _build_review_result(self, payload: ReviewToolPayload) -> ReviewResult:
+        """Convert a validated tool payload into a ReviewResult."""
+        issues_field = payload.get("issues")
+        issue_payloads: List[ReviewToolIssuePayload]
+        if isinstance(issues_field, list):
+            issue_payloads = issues_field
+        else:
+            issue_payloads = []
+
+        issues = [
+            ReviewIssue(
+                severity=issue.get("severity", "MEDIUM"),
+                file_path=issue.get("file_path", ""),
+                line_number=issue.get("line_number"),
+                category=issue.get("category", "quality"),
+                description=issue.get("description", ""),
+                suggestion=issue.get("suggestion", ""),
+                code_example=issue.get("code_example"),
+            )
+            for issue in issue_payloads
+        ]
+
+        recs_field = payload.get("recommendations")
+        recommendations: List[str]
+        if isinstance(recs_field, list):
+            recommendations = [str(rec) for rec in recs_field]
+        else:
+            recommendations = []
+
+        return ReviewResult(
+            overall_score=int(payload.get("overall_score", 50)),
+            issues=issues,
+            summary=payload.get("summary", ""),
+            recommendations=recommendations,
+        )
+
     def format_review_output(self, result: ReviewResult) -> str:
         """Format review result as human-readable text."""
         lines = [
@@ -375,3 +446,74 @@ class CodeReviewer:
         lines.append("\n" + "=" * 80)
 
         return "\n".join(lines)
+
+
+class ReviewToolIssuePayload(TypedDict, total=False):
+    severity: str
+    file_path: str
+    line_number: Optional[int]
+    category: str
+    description: str
+    suggestion: str
+    code_example: Optional[str]
+
+
+class ReviewToolPayload(TypedDict, total=False):
+    overall_score: int
+    summary: str
+    issues: List[ReviewToolIssuePayload]
+    recommendations: List[str]
+
+
+REVIEW_TOOL: ToolParam = {
+    "name": "submit_review",
+    "description": (
+        "Return a complete, structured assessment of the provided code changes. "
+        "Always populate every field and keep file paths and line numbers accurate."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "overall_score": {"type": "integer", "minimum": 0, "maximum": 100},
+            "summary": {"type": "string"},
+            "issues": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "severity": {
+                            "type": "string",
+                            "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"],
+                        },
+                        "file_path": {"type": "string"},
+                        "line_number": {"type": ["integer", "null"]},
+                        "category": {
+                            "type": "string",
+                            "enum": [
+                                "security",
+                                "performance",
+                                "quality",
+                                "best-practices",
+                            ],
+                        },
+                        "description": {"type": "string"},
+                        "suggestion": {"type": "string"},
+                        "code_example": {"type": ["string", "null"]},
+                    },
+                    "required": [
+                        "severity",
+                        "file_path",
+                        "category",
+                        "description",
+                        "suggestion",
+                    ],
+                },
+            },
+            "recommendations": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
+        },
+        "required": ["overall_score", "summary", "issues", "recommendations"],
+    },
+}
