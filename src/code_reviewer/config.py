@@ -13,7 +13,7 @@ class Config:
     anthropic_api_key: Optional[str] = None
 
     # Model settings
-    model: str = "claude-sonnet-4-20250514"
+    model: str = "claude-sonnet-4-5"
     max_tokens: int = 8000
     temperature: float = 0.7
 

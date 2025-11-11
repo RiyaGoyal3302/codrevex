@@ -173,6 +173,12 @@ class CodeReviewer:
 
             return result
 
+        except anthropic.APIConnectionError as e:
+            return ReviewResult(overall_score=0, summary=f"Network error: {str(e.__cause__)}", issues=[])
+        except anthropic.RateLimitError as e:
+            return ReviewResult(overall_score=0, summary="Rate limit exceeded. Please wait and try again.", issues=[])
+        except anthropic.APIStatusError as e:
+            return ReviewResult(overall_score=0, summary=f"API error (status {e.status_code}): {str(e.response)}", issues=[])
         except anthropic.APIError as e:
             return ReviewResult(overall_score=0, summary=f"API Error: {str(e)}", issues=[])
 
